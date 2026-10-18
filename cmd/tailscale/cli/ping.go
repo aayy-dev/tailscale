@@ -204,7 +204,8 @@ func tailscaleIPFromArg(ctx context.Context, hostOrIP string) (ip string, self b
 		return "", false, err
 	}
 	match := func(ps *ipnstate.PeerStatus) bool {
-		return strings.EqualFold(hostOrIP, dnsOrQuoteHostname(st, ps)) || hostOrIP == ps.DNSName
+		return strings.EqualFold(hostOrIP, dnsOrQuoteHostname(st, ps)) ||
+			strings.EqualFold(strings.TrimSuffix(hostOrIP, "."), strings.TrimSuffix(ps.DNSName, "."))
 	}
 	for _, ps := range st.Peer {
 		if match(ps) {
@@ -218,9 +219,10 @@ func tailscaleIPFromArg(ctx context.Context, hostOrIP string) (ip string, self b
 		return st.Self.TailscaleIPs[0].String(), true, nil
 	}
 
-	// Finally, use DNS.
-	var res net.Resolver
-	if addrs, err := res.LookupHost(ctx, hostOrIP); err != nil {
+	// Finally, use DNS. Use net.DefaultResolver rather than a zero
+	// Resolver so features that configure it (such as androiddns,
+	// for Android's missing resolv.conf) apply here too.
+	if addrs, err := net.DefaultResolver.LookupHost(ctx, hostOrIP); err != nil {
 		return "", false, fmt.Errorf("error looking up IP of %q: %v", hostOrIP, err)
 	} else if len(addrs) == 0 {
 		return "", false, fmt.Errorf("no IPs found for %q", hostOrIP)
