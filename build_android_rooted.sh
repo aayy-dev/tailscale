@@ -12,6 +12,10 @@
 #	STATE_DIR=/some/dir SOCKET=/some/dir/tailscaled.sock ./build_android_rooted.sh
 #	GOARCH=arm STRIP=1 INSTALL_DIR= ./build_android_rooted.sh
 #
+# By default it builds with ts_omit_clientupdate: "tailscale update" would
+# replace these binaries with stock ones, which have none of the Android
+# changes (and can't find their state). Set TAGS to change the build tags.
+#
 # The binaries are written to cmd/tailscaled/tailscaled and
 # cmd/tailscale/tailscale. When run in a chroot on the device, where
 # $INSTALL_DIR isn't visible, they're installed through /proc/1/root (the
@@ -24,6 +28,7 @@ cd "$(dirname "$0")"
 STATE_DIR="${STATE_DIR:-/data/local/var/lib/tailscale}"
 SOCKET="${SOCKET:-/data/local/var/run/tailscale/tailscaled.sock}"
 INSTALL_DIR="${INSTALL_DIR-/data/local/bin}"
+TAGS="${TAGS-ts_omit_clientupdate}"
 
 export TS_USE_TOOLCHAIN=1
 eval "$(./build_dist.sh shellvars)"
@@ -41,7 +46,7 @@ fi
 export CGO_ENABLED=0 GOOS=linux GOARCH="${GOARCH:-arm64}"
 for cmd in tailscaled tailscale; do
 	echo "# building $cmd for $GOOS/$GOARCH (state $STATE_DIR, socket $SOCKET)" >&2
-	./tool/go build -trimpath -ldflags "$ldflags" -o "cmd/$cmd/$cmd" "./cmd/$cmd"
+	./tool/go build ${TAGS:+-tags=$TAGS} -trimpath -ldflags "$ldflags" -o "cmd/$cmd/$cmd" "./cmd/$cmd"
 done
 
 [ -n "$INSTALL_DIR" ] || exit 0
