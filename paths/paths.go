@@ -21,14 +21,21 @@ import (
 // containing a directory we can read/write in.
 var AppSharedDir syncs.AtomicValue[string]
 
-// stateDirOverride, if non-empty, is the directory that holds tailscaled's
-// state file, logs, and (outside Windows) its Unix socket by default,
-// replacing the platform's usual locations. It's set at link time for
-// systems without a conventional filesystem layout, such as GOOS=linux
+// stateDirOverride and socketPathOverride, if non-empty, replace the
+// platform's default locations for tailscaled's state directory (state
+// file, logs, certs, etc.) and its Unix socket. They're set at link time
+// for systems without a conventional filesystem layout, such as GOOS=linux
 // binaries run on rooted Android, which has no /var:
 //
-//	go build -ldflags="-X tailscale.com/paths.stateDirOverride=/data/local/lib/tailscale"
-var stateDirOverride string
+//	go build -ldflags="-X tailscale.com/paths.stateDirOverride=/data/local/var/lib/tailscale
+//		-X tailscale.com/paths.socketPathOverride=/data/local/var/run/tailscale/tailscaled.sock"
+//
+// If only stateDirOverride is set, the socket goes in that directory
+// (outside Windows).
+var (
+	stateDirOverride   string
+	socketPathOverride string
+)
 
 // WindowsProtectedPipePrefix is the prefix of the Windows named pipe names
 // that only administrators may create. tailscaled's default socket is under
@@ -64,6 +71,9 @@ func WindowsDevTailscaledSocket() string {
 func DefaultTailscaledSocket() string {
 	if runtime.GOOS == "windows" {
 		return WindowsProtectedPipePrefix + `Tailscale\tailscaled`
+	}
+	if socketPathOverride != "" {
+		return socketPathOverride
 	}
 	if stateDirOverride != "" {
 		return filepath.Join(stateDirOverride, "tailscaled.sock")

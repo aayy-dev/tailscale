@@ -31,3 +31,20 @@ func TestStateDirOverride(t *testing.T) {
 		}
 	}
 }
+
+func TestSocketPathOverride(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("socket is a named pipe on Windows")
+	}
+	oldDir, oldSock := stateDirOverride, socketPathOverride
+	defer func() { stateDirOverride, socketPathOverride = oldDir, oldSock }()
+	stateDirOverride = "/data/local/var/lib/tailscale"
+	socketPathOverride = "/data/local/var/run/tailscale/tailscaled.sock"
+
+	if got := DefaultTailscaledSocket(); got != socketPathOverride {
+		t.Errorf("DefaultTailscaledSocket = %q; want %q", got, socketPathOverride)
+	}
+	if got, want := DefaultTailscaledStateFile(), filepath.Join(stateDirOverride, "tailscaled.state"); got != want {
+		t.Errorf("DefaultTailscaledStateFile = %q; want %q", got, want)
+	}
+}
