@@ -21,6 +21,15 @@ import (
 // containing a directory we can read/write in.
 var AppSharedDir syncs.AtomicValue[string]
 
+// stateDirOverride, if non-empty, is the directory that holds tailscaled's
+// state file, logs, and (outside Windows) its Unix socket by default,
+// replacing the platform's usual locations. It's set at link time for
+// systems without a conventional filesystem layout, such as GOOS=linux
+// binaries run on rooted Android, which has no /var:
+//
+//	go build -ldflags="-X tailscale.com/paths.stateDirOverride=/data/local/lib/tailscale"
+var stateDirOverride string
+
 // WindowsProtectedPipePrefix is the prefix of the Windows named pipe names
 // that only administrators may create. tailscaled's default socket is under
 // it, which is what lets clients trust that whatever answers there is the
@@ -55,6 +64,9 @@ func WindowsDevTailscaledSocket() string {
 func DefaultTailscaledSocket() string {
 	if runtime.GOOS == "windows" {
 		return WindowsProtectedPipePrefix + `Tailscale\tailscaled`
+	}
+	if stateDirOverride != "" {
+		return filepath.Join(stateDirOverride, "tailscaled.sock")
 	}
 	if runtime.GOOS == "darwin" {
 		return "/var/run/tailscaled.socket"
@@ -101,6 +113,9 @@ var (
 // tailscaled state file, or the empty string if there's no reasonable
 // default value.
 func DefaultTailscaledStateFile() string {
+	if stateDirOverride != "" {
+		return filepath.Join(stateDirOverride, "tailscaled.state")
+	}
 	if f := stateFileFunc; f != nil {
 		return f()
 	}
@@ -130,6 +145,9 @@ func DefaultTailscaledStateDir() string {
 // automatically creates the state directory for tailscaled
 // when it's absent.
 func MakeAutomaticStateDir() bool {
+	if stateDirOverride != "" {
+		return true
+	}
 	switch runtime.GOOS {
 	case "plan9":
 		return true
