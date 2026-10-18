@@ -53,6 +53,37 @@ func LookupByUsername(username string) (*user.User, error) {
 // lookupStd is either user.Lookup or user.LookupId.
 type lookupStd func(string) (*user.User, error)
 
+// androidRootHome and androidRootShell are the home directory and login
+// shell reported for root on Android, which has no user database that pure
+// Go or getent can read: bionic's is built in, and /etc/passwd only holds
+// partition-prefixed extras. They can be set at link time with -X, e.g.
+// -X tailscale.com/util/osuser.androidRootHome=/data/local/home.
+var (
+	androidRootHome  = "/"
+	androidRootShell = "/system/bin/sh"
+)
+
+// isAndroid is distro.IsAndroid, as a variable for tests.
+var isAndroid = distro.IsAndroid
+
+// androidRoot returns the built-in root user reported on Android when
+// usernameOrUID names root and the standard lookup fails.
+func androidRoot(usernameOrUID string, std lookupStd) (*user.User, bool) {
+	if usernameOrUID != "root" && usernameOrUID != "0" {
+		return nil, false
+	}
+	if _, err := std(usernameOrUID); err == nil {
+		return nil, false
+	}
+	return &user.User{
+		Uid:      "0",
+		Gid:      "0",
+		Username: "root",
+		Name:     "root",
+		HomeDir:  androidRootHome,
+	}, true
+}
+
 var execGetent = func(ctx context.Context, args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, "getent", args...).Output()
 }
@@ -104,6 +135,16 @@ func lookup(usernameOrUID string, std lookupStd, wantShell bool) (*user.User, st
 			Name:     "Glenda",
 			HomeDir:  "/",
 		}, "/bin/rc", nil
+	}
+
+	if runtime.GOOS == "linux" && isAndroid() {
+		if u, ok := androidRoot(usernameOrUID, std); ok {
+			var shell string
+			if wantShell {
+				shell = androidRootShell
+			}
+			return u, shell, nil
+		}
 	}
 
 	// Start with getent if caller wants to get the user shell.

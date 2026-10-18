@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os/user"
 	"reflect"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -99,5 +100,38 @@ func TestUserLookupGetentUsesProbeResult(t *testing.T) {
 				t.Fatalf("got user=%+v shell=%q", u, shell)
 			}
 		})
+	}
+}
+
+func TestAndroidRootFallback(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Android fallback only applies to GOOS=linux binaries")
+	}
+	origIsAndroid, origHome, origShell, origExecGetent := isAndroid, androidRootHome, androidRootShell, execGetent
+	t.Cleanup(func() {
+		isAndroid, androidRootHome, androidRootShell, execGetent = origIsAndroid, origHome, origShell, origExecGetent
+	})
+	isAndroid = func() bool { return true }
+	androidRootHome, androidRootShell = "/data/local/home", "/data/local/bin/zsh"
+	execGetent = func(context.Context, ...string) ([]byte, error) { return nil, errors.New("no getent") }
+	notFound := func(string) (*user.User, error) { return nil, errors.New("not found") }
+
+	for _, name := range []string{"root", "0"} {
+		u, shell, err := lookup(name, notFound, true)
+		if err != nil {
+			t.Fatalf("lookup(%q): %v", name, err)
+		}
+		if u.Uid != "0" || u.Username != "root" || u.HomeDir != androidRootHome || shell != androidRootShell {
+			t.Errorf("lookup(%q) = %+v, %q; want built-in root with home %q, shell %q", name, u, shell, androidRootHome, androidRootShell)
+		}
+	}
+	if _, _, err := lookup("nobody", notFound, true); err == nil {
+		t.Error("lookup(nobody) succeeded; want error for non-root users")
+	}
+
+	realRoot := &user.User{Uid: "0", Gid: "0", Username: "root", HomeDir: "/root"}
+	found := func(string) (*user.User, error) { return realRoot, nil }
+	if u, _, err := lookup("root", found, false); err != nil || u != realRoot {
+		t.Errorf("lookup(root) with a working user database = %+v, %v; want it unchanged", u, err)
 	}
 }

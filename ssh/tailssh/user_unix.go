@@ -69,12 +69,21 @@ func (u *userMeta) LoginShell() string {
 // name)
 var defaultPathTmpl = envknob.RegisterString("TAILSCALE_SSH_DEFAULT_PATH")
 
+// androidDefaultPath is the default PATH for sessions on Android (as a
+// GOOS=linux binary on a rooted device), which has none of the usual Unix
+// directories. It defaults to what Android's own shells use and can be set
+// at link time with -X tailscale.com/ssh/tailssh.androidDefaultPath=...
+var androidDefaultPath = "/product/bin:/apex/com.android.runtime/bin:/apex/com.android.art/bin:/apex/com.android.virt/bin:/system_ext/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin"
+
 func defaultPathForUser(u *user.User) string {
 	if s := defaultPathTmpl(); s != "" {
 		return expandDefaultPathTmpl(s, u)
 	}
 	if runtime.GOOS == "plan9" {
 		return "/bin"
+	}
+	if runtime.GOOS == "linux" && distro.IsAndroid() {
+		return androidDefaultPath
 	}
 	isRoot := u.Uid == "0"
 	switch distro.Get() {

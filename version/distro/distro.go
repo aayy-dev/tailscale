@@ -38,6 +38,7 @@ const (
 
 var distro lazy.SyncValue[Distro]
 var isWSL lazy.SyncValue[bool]
+var isAndroid lazy.SyncValue[bool]
 
 // Get returns the current distro, or the empty string if unknown.
 func Get() Distro {
@@ -59,6 +60,19 @@ func IsWSL() bool {
 		// We could look for $WSL_INTEROP instead, however that may be missing if
 		// the user has started to use systemd in WSL2.
 		return have("/proc/sys/fs/binfmt_misc/WSLInterop") || have("/mnt/wsl")
+	})
+}
+
+// IsAndroid reports whether we're running on Android, including a GOOS=linux
+// binary run under an Android kernel (as in a rooted shell or Termux). It
+// checks for /dev/__properties__, bionic's property store, which exists on
+// every Android since 5.0 and never on regular Linux.
+func IsAndroid() bool {
+	if runtime.GOOS == "android" {
+		return true
+	}
+	return runtime.GOOS == "linux" && isAndroid.Get(func() bool {
+		return have("/dev/__properties__")
 	})
 }
 

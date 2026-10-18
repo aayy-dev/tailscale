@@ -6,9 +6,11 @@ package osuser
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"os/user"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +35,20 @@ func GetGroupIds(user *user.User) ([]string, error) {
 		// so rather than fail below, just hardcode root.
 		// TODO(bradfitz): fix os/user upstream instead?
 		return []string{"0"}, nil
+	}
+
+	if runtime.GOOS == "linux" && isAndroid() && user.Uid == "0" && os.Getuid() == 0 {
+		// Android has no group database to consult (and toybox's id lacks
+		// -z), so give root the groups this root process already has, like
+		// an adb root shell.
+		ids := []string{"0"}
+		gids, _ := os.Getgroups()
+		for _, g := range gids {
+			if g != 0 {
+				ids = append(ids, strconv.Itoa(g))
+			}
+		}
+		return ids, nil
 	}
 
 	if ids, err := getGroupIdsWithId(user.Username); err == nil {
