@@ -30,6 +30,12 @@ SOCKET="${SOCKET:-/data/local/var/run/tailscale/tailscaled.sock}"
 INSTALL_DIR="${INSTALL_DIR-/data/local/bin}"
 TAGS="${TAGS-ts_omit_clientupdate}"
 
+# Tailscale SSH: root's home and login shell (Android has no user database
+# Go can read) and the default PATH for sessions.
+ROOT_HOME="${ROOT_HOME:-/data/local/home}"
+ROOT_SHELL="${ROOT_SHELL:-/data/local/bin/zsh}"
+SSH_PATH="${SSH_PATH:-/data/local/bin:/data/local/bin/gnu:/product/bin:/apex/com.android.runtime/bin:/apex/com.android.art/bin:/apex/com.android.virt/bin:/system_ext/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin:/data/adb/magisk}"
+
 export TS_USE_TOOLCHAIN=1
 eval "$(./build_dist.sh shellvars)"
 
@@ -39,6 +45,9 @@ ldflags="-X tailscale.com/version.longStamp=$VERSION_LONG"
 ldflags="$ldflags -X tailscale.com/version.shortStamp=$VERSION_SHORT"
 ldflags="$ldflags -X tailscale.com/paths.stateDirOverride=$STATE_DIR"
 ldflags="$ldflags -X tailscale.com/paths.socketPathOverride=$SOCKET"
+ldflags="$ldflags -X tailscale.com/util/osuser.androidRootHome=$ROOT_HOME"
+ldflags="$ldflags -X tailscale.com/util/osuser.androidRootShell=$ROOT_SHELL"
+ldflags="$ldflags -X tailscale.com/ssh/tailssh.androidDefaultPath=$SSH_PATH"
 if [ "${STRIP:-0}" = 1 ]; then
 	ldflags="$ldflags -s -w"
 fi
