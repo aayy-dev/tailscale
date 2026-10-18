@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"tailscale.com/feature"
+	"tailscale.com/net/dnscache"
 )
 
 // This init runs in GOOS=android builds without cgo and in all
@@ -25,6 +26,12 @@ import (
 // no-op after one stat. Otherwise it requires positive evidence of
 // Android (see onAndroid) plus a successful connection to the
 // dnsproxyd socket before touching the default resolver.
+//
+// It also patches dnscache's default forwarder, which is its own
+// net.Resolver rather than net.DefaultResolver, so tailscaled's own
+// lookups (control, DERP, logtail) would otherwise still hit the
+// missing resolv.conf and fall back to bootstrap DNS. It's modified in
+// place because other caches, such as logpolicy's, share the pointer.
 func init() {
 	if !feature.Register("androiddns") {
 		return
@@ -34,6 +41,10 @@ func init() {
 	}
 	net.DefaultResolver.PreferGo = true
 	net.DefaultResolver.Dial = resolverDial
+	if fwd := dnscache.Get().Forward; fwd != nil {
+		fwd.PreferGo = true
+		fwd.Dial = resolverDial
+	}
 }
 
 // onAndroid reports whether the process is running on Android, even
