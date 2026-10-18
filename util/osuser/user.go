@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"os/user"
 	"reflect"
@@ -66,14 +67,27 @@ var (
 // isAndroid is distro.IsAndroid, as a variable for tests.
 var isAndroid = distro.IsAndroid
 
+// etcPasswd is the passwd file checked for a real root entry on Android, as a
+// variable for tests.
+var etcPasswd = "/etc/passwd"
+
 // androidRoot returns the built-in root user reported on Android when
-// usernameOrUID names root and the standard lookup fails.
-func androidRoot(usernameOrUID string, std lookupStd) (*user.User, bool) {
+// usernameOrUID names root and etcPasswd has no root entry of its own.
+//
+// It doesn't consult os/user, whose Lookup and LookupId return the current
+// user when the name or uid matches it, and without cgo or a passwd entry
+// that user is built from $HOME and $USER, so they'd "succeed" with
+// whatever environment tailscaled happened to be started with.
+func androidRoot(usernameOrUID string) (*user.User, bool) {
 	if usernameOrUID != "root" && usernameOrUID != "0" {
 		return nil, false
 	}
-	if _, err := std(usernameOrUID); err == nil {
-		return nil, false
+	if b, err := os.ReadFile(etcPasswd); err == nil {
+		for line := range strings.Lines(string(b)) {
+			if strings.HasPrefix(line, "root:") {
+				return nil, false
+			}
+		}
 	}
 	return &user.User{
 		Uid:      "0",
@@ -138,7 +152,7 @@ func lookup(usernameOrUID string, std lookupStd, wantShell bool) (*user.User, st
 	}
 
 	if runtime.GOOS == "linux" && isAndroid() {
-		if u, ok := androidRoot(usernameOrUID, std); ok {
+		if u, ok := androidRoot(usernameOrUID); ok {
 			var shell string
 			if wantShell {
 				shell = androidRootShell

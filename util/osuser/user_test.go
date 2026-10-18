@@ -6,7 +6,9 @@ package osuser
 import (
 	"context"
 	"errors"
+	"os"
 	"os/user"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"sync"
@@ -107,17 +109,26 @@ func TestAndroidRootFallback(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Android fallback only applies to GOOS=linux binaries")
 	}
-	origIsAndroid, origHome, origShell, origExecGetent := isAndroid, androidRootHome, androidRootShell, execGetent
+	origIsAndroid, origHome, origShell, origExecGetent, origPasswd := isAndroid, androidRootHome, androidRootShell, execGetent, etcPasswd
 	t.Cleanup(func() {
-		isAndroid, androidRootHome, androidRootShell, execGetent = origIsAndroid, origHome, origShell, origExecGetent
+		isAndroid, androidRootHome, androidRootShell, execGetent, etcPasswd = origIsAndroid, origHome, origShell, origExecGetent, origPasswd
 	})
 	isAndroid = func() bool { return true }
 	androidRootHome, androidRootShell = "/data/local/home", "/data/local/bin/zsh"
 	execGetent = func(context.Context, ...string) ([]byte, error) { return nil, errors.New("no getent") }
-	notFound := func(string) (*user.User, error) { return nil, errors.New("not found") }
 
+	// Android ships an empty /etc/passwd.
+	etcPasswd = filepath.Join(t.TempDir(), "passwd")
+	if err := os.WriteFile(etcPasswd, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	// os/user's Lookup returns the current user, built from $HOME, when the
+	// name matches; the built-in root must still win over that.
+	fromEnv := func(string) (*user.User, error) {
+		return &user.User{Uid: "0", Gid: "0", Username: "root", HomeDir: "/"}, nil
+	}
 	for _, name := range []string{"root", "0"} {
-		u, shell, err := lookup(name, notFound, true)
+		u, shell, err := lookup(name, fromEnv, true)
 		if err != nil {
 			t.Fatalf("lookup(%q): %v", name, err)
 		}
@@ -125,13 +136,18 @@ func TestAndroidRootFallback(t *testing.T) {
 			t.Errorf("lookup(%q) = %+v, %q; want built-in root with home %q, shell %q", name, u, shell, androidRootHome, androidRootShell)
 		}
 	}
+	notFound := func(string) (*user.User, error) { return nil, errors.New("not found") }
 	if _, _, err := lookup("nobody", notFound, true); err == nil {
 		t.Error("lookup(nobody) succeeded; want error for non-root users")
 	}
 
+	// A real root entry in /etc/passwd wins over the built-in one.
+	if err := os.WriteFile(etcPasswd, []byte("root:x:0:0:root:/root:/bin/sh\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	realRoot := &user.User{Uid: "0", Gid: "0", Username: "root", HomeDir: "/root"}
 	found := func(string) (*user.User, error) { return realRoot, nil }
 	if u, _, err := lookup("root", found, false); err != nil || u != realRoot {
-		t.Errorf("lookup(root) with a working user database = %+v, %v; want it unchanged", u, err)
+		t.Errorf("lookup(root) with a root entry in passwd = %+v, %v; want it unchanged", u, err)
 	}
 }
