@@ -1648,12 +1648,27 @@ var ubntIPRules = []netlink.Rule{
 
 // ipRules returns the appropriate list of ip rules to be used by Tailscale. See
 // comments on baseIPRules and ubntIPRules for more details.
+//
+// Android also gets ubntIPRules: its default route lives in a per-network
+// table (e.g. "wlan0") reached via netd's own rules, and the main table has
+// none, so baseIPRules would send our bypass-marked packets to the
+// unreachable rule. Letting them fall through to netd's rules instead routes
+// them over the current default network.
 func ipRules() []netlink.Rule {
-	if getDistroFunc() == distro.UBNT {
+	if getDistroFunc() == distro.UBNT || onAndroid() {
 		return ubntIPRules
 	}
 	return baseIPRules
 }
+
+// onAndroid reports whether this GOOS=linux binary is running on Android,
+// detected like feature/androidbin does: /dev/__properties__, bionic's
+// property store, exists on every Android since 5.0 and never on regular
+// Linux. It's a variable so tests can override it.
+var onAndroid = sync.OnceValue(func() bool {
+	_, err := os.Stat("/dev/__properties__")
+	return err == nil
+})
 
 // justAddIPRules adds policy routing rule without deleting any first.
 func (r *linuxRouter) justAddIPRules() error {

@@ -1559,6 +1559,20 @@ func TestIPRulesForUBNT(t *testing.T) {
 	}
 }
 
+func TestIPRulesForAndroid(t *testing.T) {
+	oldOnAndroid := onAndroid
+	getDistroFunc = func() distro.Distro { return "" }
+	onAndroid = func() bool { return true }
+	defer func() {
+		getDistroFunc = distro.Get
+		onAndroid = oldOnAndroid
+	}()
+
+	if got := ipRules(); !slices.Equal(got, ubntIPRules) {
+		t.Errorf("ipRules() on Android = %+v; want ubntIPRules %+v", got, ubntIPRules)
+	}
+}
+
 func TestUpdateMagicsockPortChange(t *testing.T) {
 	nfr := &fakeIPTablesRunner{
 		t:    t,
