@@ -72,6 +72,11 @@ var ptyName = func(f *os.File) (string, error) {
 // This is best effort to still allow running on machines where
 // we don't support starting sessions, e.g. darwin.
 // See maybeStartLoginSessionLinux.
+// resetOOMScoreAdj drops any protection from the OOM killer that the session
+// inherited from tailscaled, as OpenSSH's sshd does for its sessions, so the
+// user's processes can still be OOM-killed. It's set on Linux.
+var resetOOMScoreAdj = func(dlogf logger.Logf) {}
+
 var maybeStartLoginSession = func(dlogf logger.Logf, ia incubatorArgs) (close func() error) {
 	return nil
 }
@@ -430,6 +435,8 @@ func beIncubator(args []string) error {
 			defer logFile.Close()
 		}
 	}
+
+	resetOOMScoreAdj(dlogf)
 
 	if !shouldAttemptLoginShell(dlogf, ia) {
 		dlogf("not attempting login shell")

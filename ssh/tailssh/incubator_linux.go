@@ -9,6 +9,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -20,6 +22,25 @@ import (
 func init() {
 	ptyName = ptyNameLinux
 	maybeStartLoginSession = maybeStartLoginSessionLinux
+	resetOOMScoreAdj = resetOOMScoreAdjLinux
+}
+
+// resetOOMScoreAdjLinux sets the process's oom_score_adj back to 0 if it's
+// negative, as when tailscaled runs exempt from the OOM killer (-1000).
+// Raising it needs no privileges.
+func resetOOMScoreAdjLinux(dlogf logger.Logf) {
+	const f = "/proc/self/oom_score_adj"
+	b, err := os.ReadFile(f)
+	if err != nil {
+		return
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil || v >= 0 {
+		return
+	}
+	if err := os.WriteFile(f, []byte("0"), 0); err != nil {
+		dlogf("resetting oom_score_adj from %d: %v", v, err)
+	}
 }
 
 func ptyNameLinux(f *os.File) (string, error) {
